@@ -6,6 +6,8 @@ import (
 
 	"github.com/RoaringBitmap/roaring"
 	"github.com/couchbase/vellum"
+	"github.com/couchbase/vellum/levenshtein"
+	"github.com/couchbase/vellum/regexp"
 )
 
 // getFieldMeta returns metadata for a field using O(1) map lookup.
@@ -99,4 +101,84 @@ func (s *Segment) Search(term, fieldName string, deleted *roaring.Bitmap) ([]Pos
 // decodePostings decodes a posting list from segment data.
 func decodePostings(data []byte) ([]Posting, error) {
 	return DecodePostings(data)
+}
+
+// searchWithAutomaton is a helper that searches FST using any vellum automaton.
+func (s *Segment) searchWithAutomaton(fieldName string, aut vellum.Automaton) ([]string, error) {
+	fst, err := s.getFST(fieldName)
+	if err != nil {
+		return nil, err
+	}
+
+	iter, err := fst.Search(aut, nil, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search FST: %w", err)
+	}
+
+	var terms []string
+	for err == nil {
+		key, _ := iter.Current()
+		terms = append(terms, string(key))
+		err = iter.Next()
+	}
+
+	if err != vellum.ErrIteratorDone {
+		return nil, err
+	}
+
+	return terms, nil
+}
+
+// MatchingTerms returns all terms in a field that match the given regex pattern.
+func (s *Segment) MatchingTerms(pattern, fieldName string) ([]string, error) {
+	aut, err := regexp.New(pattern)
+	if err != nil {
+		return nil, fmt.Errorf("invalid regex pattern: %w", err)
+	}
+	return s.searchWithAutomaton(fieldName, aut)
+}
+
+// FuzzyTerms returns all terms in a field within edit distance of the query.
+func (s *Segment) FuzzyTerms(term string, fuzziness uint8, fieldName string) ([]string, error) {
+	builder, err := levenshtein.NewLevenshteinAutomatonBuilder(fuzziness, true)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create levenshtein builder: %w", err)
+	}
+
+	aut, err := builder.BuildDfa(term, fuzziness)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build fuzzy automaton: %w", err)
+	}
+
+	return s.searchWithAutomaton(fieldName, aut)
+}
+
+// PrefixTerms returns all terms in a field that start with the given prefix.
+// Uses efficient FST range scan instead of automaton.
+func (s *Segment) PrefixTerms(prefix, fieldName string) ([]string, error) {
+	fst, err := s.getFST(fieldName)
+	if err != nil {
+		return nil, err
+	}
+
+	start := []byte(prefix)
+	end := prefixSuccessor(start)
+
+	iter, err := fst.Iterator(start, end)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create iterator: %w", err)
+	}
+
+	var terms []string
+	for err == nil {
+		key, _ := iter.Current()
+		terms = append(terms, string(key))
+		err = iter.Next()
+	}
+
+	if err != vellum.ErrIteratorDone {
+		return nil, err
+	}
+
+	return terms, nil
 }

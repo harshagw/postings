@@ -67,10 +67,6 @@ func (s *Searcher) OrSearch(terms []string, field string) ([]Result, error) {
 		return nil, nil
 	}
 
-	if len(terms) == 1 {
-		return s.Search(terms[0], field)
-	}
-
 	docScores := make(map[string]Result)
 
 	for _, term := range terms {
@@ -82,8 +78,10 @@ func (s *Searcher) OrSearch(terms []string, field string) ([]Result, error) {
 		for _, r := range termResults {
 			if existing, ok := docScores[r.DocID]; ok {
 				existing.Score += r.Score
+				existing.MatchedTerms = append(existing.MatchedTerms, term)
 				docScores[r.DocID] = existing
 			} else {
+				r.MatchedTerms = []string{term}
 				docScores[r.DocID] = r
 			}
 		}

@@ -9,9 +9,10 @@ import (
 
 // Result represents a search hit with score.
 type Result struct {
-	DocID string
-	Score float64
-	Doc   map[string]any
+	DocID        string
+	Score        float64
+	Doc          map[string]any
+	MatchedTerms []string
 }
 
 // Searcher performs searches on an index snapshot.
@@ -164,4 +165,35 @@ func (s *Searcher) searchBuilderField(builder *segment.Builder, term, field stri
 	}
 
 	return matches
+}
+
+// getFieldsToSearch returns fields to search.
+func (s *Searcher) getFieldsToSearch(field string) []string {
+	if field != "" {
+		return []string{field}
+	}
+
+	fieldSet := make(map[string]bool)
+
+	for _, segSnap := range s.snapshot.Segments() {
+		for _, f := range segSnap.Segment().Fields() {
+			if f != "_id" {
+				fieldSet[f] = true
+			}
+		}
+	}
+
+	if s.snapshot.Builder() != nil {
+		for f := range s.snapshot.Builder().Fields {
+			if f != "_id" {
+				fieldSet[f] = true
+			}
+		}
+	}
+
+	fields := make([]string, 0, len(fieldSet))
+	for f := range fieldSet {
+		fields = append(fields, f)
+	}
+	return fields
 }

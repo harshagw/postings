@@ -46,32 +46,6 @@ func (s *Searcher) PhraseSearch(phrase, field string) ([]Result, error) {
 	return s.scoreAndSort(matches), nil
 }
 
-func (s *Searcher) getFieldsToSearch(field string) []string {
-	if field != "" {
-		return []string{field}
-	}
-
-	fieldSet := make(map[string]bool)
-
-	for _, segSnap := range s.snapshot.Segments() {
-		for _, f := range segSnap.Segment().Fields() {
-			fieldSet[f] = true
-		}
-	}
-
-	if s.snapshot.Builder() != nil {
-		for f := range s.snapshot.Builder().Fields {
-			fieldSet[f] = true
-		}
-	}
-
-	fields := make([]string, 0, len(fieldSet))
-	for f := range fieldSet {
-		fields = append(fields, f)
-	}
-	return fields
-}
-
 func (s *Searcher) phraseMatchInSegment(segSnap *index.SegmentSnapshot, terms []string, field string, seen map[string]bool) []searchMatch {
 	var matches []searchMatch
 	seg := segSnap.Segment()

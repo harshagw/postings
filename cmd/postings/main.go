@@ -54,6 +54,9 @@ func printHelp() {
 	fmt.Println("  search [--field=F] <query>   - Term/phrase search (optionally in field F)")
 	fmt.Println("  search [--field=F] --and ... - AND search: docs containing ALL terms")
 	fmt.Println("  search [--field=F] --or ...  - OR search: docs containing ANY term")
+	fmt.Println("  search [--field=F] --regex <pattern>  - Regex search: terms matching pattern")
+	fmt.Println("  search [--field=F] --prefix <prefix>  - Prefix search: terms starting with prefix")
+	fmt.Println("  search [--field=F] --fuzzy[=N] <term> - Fuzzy search: terms within N edits (default 1)")
 	fmt.Println("  segments                     - List all segments")
 	fmt.Println("  segment <id> stats           - Show segment details")
 	fmt.Println("  doc <segment> <docNum>       - Load stored document")
@@ -187,7 +190,7 @@ func (r *REPL) cmdSearch(args []string) {
 	var results []search.Result
 	var queryDesc string
 
-	// Check for --and or --or flags
+	// Check for --and, --or, or --regex flags
 	if args[0] == "--and" {
 		if len(args) < 2 {
 			fmt.Println("Usage: search --and <term1> <term2> ...")
@@ -210,6 +213,37 @@ func (r *REPL) cmdSearch(args []string) {
 		}
 		queryDesc = "OR(" + strings.Join(terms, ", ") + ")"
 		results, err = searcher.OrSearch(terms, field)
+	} else if args[0] == "--regex" {
+		if len(args) < 2 {
+			fmt.Println("Usage: search --regex <pattern>")
+			return
+		}
+		pattern := args[1]
+		queryDesc = "REGEX(" + pattern + ")"
+		results, err = searcher.RegexSearch(pattern, field)
+	} else if args[0] == "--prefix" {
+		if len(args) < 2 {
+			fmt.Println("Usage: search --prefix <prefix>")
+			return
+		}
+		prefix := strings.ToLower(args[1])
+		queryDesc = "PREFIX(" + prefix + ")"
+		results, err = searcher.PrefixSearch(prefix, field)
+	} else if strings.HasPrefix(args[0], "--fuzzy") {
+		fuzziness := uint8(1)
+		if strings.HasPrefix(args[0], "--fuzzy=") {
+			n, _ := strconv.Atoi(strings.TrimPrefix(args[0], "--fuzzy="))
+			if n >= 1 && n <= 2 {
+				fuzziness = uint8(n)
+			}
+		}
+		if len(args) < 2 {
+			fmt.Println("Usage: search --fuzzy[=N] <term>")
+			return
+		}
+		term := strings.ToLower(args[1])
+		queryDesc = fmt.Sprintf("FUZZY(%s, %d)", term, fuzziness)
+		results, err = searcher.FuzzySearch(term, fuzziness, field)
 	} else if len(args) == 1 {
 		query := strings.ToLower(args[0])
 		queryDesc = query
@@ -234,7 +268,11 @@ func (r *REPL) cmdSearch(args []string) {
 	} else {
 		fmt.Printf("Found %d results for %s:\n", len(results), queryDesc)
 		for _, res := range results {
-			fmt.Printf("  %s (%.4f)\n", res.DocID, res.Score)
+			if len(res.MatchedTerms) > 0 {
+				fmt.Printf("  %s (%.4f) [terms: %s]\n", res.DocID, res.Score, strings.Join(res.MatchedTerms, ", "))
+			} else {
+				fmt.Printf("  %s (%.4f)\n", res.DocID, res.Score)
+			}
 		}
 	}
 }
