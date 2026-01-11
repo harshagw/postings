@@ -31,9 +31,11 @@ func (s *Searcher) Close() error {
 }
 
 type searchMatch struct {
-	docID      string
-	tf         float64
-	segmentIdx int
+	docID       string
+	tf          float64
+	fieldLength uint64
+	field       string
+	segmentIdx  int
 }
 
 // Search searches for a term, optionally in a specific field.
@@ -41,7 +43,6 @@ func (s *Searcher) Search(term, field string) ([]Result, error) {
 	seen := make(map[string]bool)
 	var matches []searchMatch
 
-	// Search persisted segments (newest first)
 	segments := s.snapshot.Segments()
 	for i := len(segments) - 1; i >= 0; i-- {
 		segSnap := segments[i]
@@ -49,27 +50,68 @@ func (s *Searcher) Search(term, field string) ([]Result, error) {
 		matches = append(matches, segMatches...)
 	}
 
-	// Search in-memory builder
 	if s.snapshot.Builder() != nil {
 		builderMatches := s.searchBuilder(term, field, seen)
 		matches = append(matches, builderMatches...)
 	}
 
-	return s.scoreAndSort(matches), nil
+	return s.scoreAndSort(matches, field), nil
 }
 
-// scoreAndSort calculates TF-IDF scores and sorts results.
-func (s *Searcher) scoreAndSort(matches []searchMatch) []Result {
+func (s *Searcher) scoreAndSort(matches []searchMatch, field string) []Result {
 	totalDocs := s.snapshot.TotalDocs()
 	df := uint64(len(matches))
-	idf := math.Log(float64(totalDocs) / float64(df+1))
 
 	results := make([]Result, len(matches))
-	for i, m := range matches {
-		score := m.tf * idf
-		results[i] = Result{
-			DocID: m.docID,
-			Score: score,
+
+	if s.snapshot.ScoringMode() == index.ScoringBM25 {
+		// Cache avg field lengths per field for multi-field searches
+		avgFieldLengthCache := make(map[string]float64)
+		getAvgFieldLength := func(f string) float64 {
+			if avg, ok := avgFieldLengthCache[f]; ok {
+				return avg
+			}
+			avg := s.snapshot.AvgFieldLength(f)
+			if avg == 0 {
+				avg = 1
+			}
+			avgFieldLengthCache[f] = avg
+			return avg
+		}
+
+		idf := math.Log(1 + (float64(totalDocs)-float64(df)+0.5)/(float64(df)+0.5))
+
+		for i, m := range matches {
+			// Use the field from the match, fall back to provided field
+			matchField := m.field
+			if matchField == "" {
+				matchField = field
+			}
+			avgFieldLength := getAvgFieldLength(matchField)
+
+			fieldLen := float64(m.fieldLength)
+			if fieldLen == 0 {
+				fieldLen = avgFieldLength
+			}
+			tf := m.tf
+			score := idf * (tf * (BM25_k1 + 1)) / (tf + BM25_k1*(1-BM25_b+BM25_b*fieldLen/avgFieldLength))
+			results[i] = Result{
+				DocID: m.docID,
+				Score: score,
+			}
+		}
+	} else {
+		idf := math.Log(float64(totalDocs+1)/float64(df+1)) + 1.0
+		for i, m := range matches {
+			var tf float64
+			if m.tf > 0 {
+				tf = 1.0 + math.Log(m.tf)
+			}
+			score := tf * idf
+			results[i] = Result{
+				DocID: m.docID,
+				Score: score,
+			}
 		}
 	}
 
@@ -109,9 +151,11 @@ func (s *Searcher) searchSegmentField(segSnap *index.SegmentSnapshot, seg *segme
 		}
 		seen[extID] = true
 		matches = append(matches, searchMatch{
-			docID:      extID,
-			tf:         float64(p.Frequency),
-			segmentIdx: segIdx,
+			docID:       extID,
+			tf:          float64(p.Frequency),
+			fieldLength: seg.FieldLength(field, p.DocNum),
+			field:       field,
+			segmentIdx:  segIdx,
 		})
 	}
 
@@ -156,9 +200,11 @@ func (s *Searcher) searchBuilderField(builder *segment.Builder, term, field stri
 			if !seen[extID] {
 				seen[extID] = true
 				matches = append(matches, searchMatch{
-					docID:      extID,
-					tf:         float64(p.Frequency),
-					segmentIdx: -1,
+					docID:       extID,
+					tf:          float64(p.Frequency),
+					fieldLength: builder.FieldLength(field, p.DocNum),
+					field:       field,
+					segmentIdx:  -1,
 				})
 			}
 		}

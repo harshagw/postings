@@ -13,6 +13,13 @@ import (
 	"harshagw/postings/internal/store"
 )
 
+type ScoringMode int
+
+const (
+	ScoringTFIDF ScoringMode = iota
+	ScoringBM25
+)
+
 type Index struct {
 	mu sync.RWMutex
 
@@ -25,6 +32,7 @@ type Index struct {
 
 	analyzer       analysis.Analyzer
 	flushThreshold int
+	scoringMode    ScoringMode
 
 	closed bool
 }
@@ -33,6 +41,7 @@ type Config struct {
 	Dir            string
 	FlushThreshold int
 	Analyzer       analysis.Analyzer
+	ScoringMode    ScoringMode
 }
 
 func DefaultConfig(dir string) Config {
@@ -40,6 +49,7 @@ func DefaultConfig(dir string) Config {
 		Dir:            dir,
 		FlushThreshold: 1000,
 		Analyzer:       analysis.NewSimple(),
+		ScoringMode:    ScoringBM25,
 	}
 }
 
@@ -61,6 +71,7 @@ func New(config Config) (*Index, error) {
 		pendingDeletions: make(map[string]*roaring.Bitmap),
 		analyzer:         config.Analyzer,
 		flushThreshold:   config.FlushThreshold,
+		scoringMode:      config.ScoringMode,
 	}
 
 	idx.builder = segment.NewBuilder(idx.analyzer)

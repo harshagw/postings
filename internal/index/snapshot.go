@@ -29,10 +29,11 @@ func (s *SegmentSnapshot) Search(term, field string) ([]segment.Posting, error) 
 
 // IndexSnapshot represents a point-in-time view of the index for searching.
 type IndexSnapshot struct {
-	segments []*SegmentSnapshot
-	builder  *segment.Builder
-	epoch    uint64
-	analyzer analysis.Analyzer
+	segments    []*SegmentSnapshot
+	builder     *segment.Builder
+	epoch       uint64
+	analyzer    analysis.Analyzer
+	scoringMode ScoringMode
 }
 
 // Segments returns the segment snapshots.
@@ -43,6 +44,9 @@ func (s *IndexSnapshot) Builder() *segment.Builder { return s.builder }
 
 // Analyzer returns the index's analyzer.
 func (s *IndexSnapshot) Analyzer() analysis.Analyzer { return s.analyzer }
+
+// ScoringMode returns the scoring mode for this snapshot.
+func (s *IndexSnapshot) ScoringMode() ScoringMode { return s.scoringMode }
 
 // TotalDocs returns the total number of documents across all segments.
 func (s *IndexSnapshot) TotalDocs() uint64 {
@@ -59,8 +63,38 @@ func (s *IndexSnapshot) TotalDocs() uint64 {
 	return total
 }
 
+// AvgFieldLength returns the average length of a field across all segments.
+func (s *IndexSnapshot) AvgFieldLength(field string) float64 {
+	var totalTokens uint64
+	var docCount uint64
+
+	for _, seg := range s.segments {
+		avg := seg.seg.AvgFieldLength(field)
+		if avg > 0 {
+			numDocs := seg.seg.NumDocs()
+			if seg.deleted != nil {
+				numDocs -= seg.deleted.GetCardinality()
+			}
+			totalTokens += uint64(avg * float64(numDocs))
+			docCount += numDocs
+		}
+	}
+
+	if s.builder != nil {
+		avg := s.builder.AvgFieldLength(field)
+		if avg > 0 {
+			totalTokens += uint64(avg * float64(s.builder.NumDocs()))
+			docCount += s.builder.NumDocs()
+		}
+	}
+
+	if docCount == 0 {
+		return 0
+	}
+	return float64(totalTokens) / float64(docCount)
+}
+
 // Close releases snapshot resources.
 func (s *IndexSnapshot) Close() error {
-	// Snapshots don't own the segments, so nothing to close
 	return nil
 }

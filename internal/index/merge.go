@@ -29,7 +29,7 @@ func (idx *Index) Merge(segmentIDs []string) error {
 	var segsToMerge []*SegmentSnapshot
 	for _, seg := range idx.segments {
 		if idSet[seg.ID()] {
-			deleted, err := idx.meta.GetDeletions(seg.ID())
+			deleted, err := idx.getDeletions(seg.ID())
 			if err != nil {
 				return err
 			}

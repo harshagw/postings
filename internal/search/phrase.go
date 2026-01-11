@@ -43,7 +43,7 @@ func (s *Searcher) PhraseSearch(phrase, field string) ([]Result, error) {
 		}
 	}
 
-	return s.scoreAndSort(matches), nil
+	return s.scoreAndSort(matches, field), nil
 }
 
 func (s *Searcher) phraseMatchInSegment(segSnap *index.SegmentSnapshot, terms []string, field string, seen map[string]bool) []searchMatch {
@@ -90,7 +90,13 @@ func (s *Searcher) phraseMatchInSegment(segSnap *index.SegmentSnapshot, terms []
 				continue
 			}
 			seen[extID] = true
-			matches = append(matches, searchMatch{docID: extID, tf: 1.0, segmentIdx: -1})
+			matches = append(matches, searchMatch{
+				docID:       extID,
+				tf:          1.0,
+				fieldLength: seg.FieldLength(field, docNum),
+				field:       field,
+				segmentIdx:  -1,
+			})
 		}
 	}
 
@@ -168,7 +174,13 @@ func (s *Searcher) phraseMatchInBuilder(terms []string, field string, seen map[s
 				extID := builder.DocIDs[docNum]
 				if !seen[extID] {
 					seen[extID] = true
-					matches = append(matches, searchMatch{docID: extID, tf: 1.0, segmentIdx: -1})
+					matches = append(matches, searchMatch{
+						docID:       extID,
+						tf:          1.0,
+						fieldLength: builder.FieldLength(field, docNum),
+						field:       field,
+						segmentIdx:  -1,
+					})
 				}
 			}
 		}

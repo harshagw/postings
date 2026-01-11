@@ -138,6 +138,26 @@ func (s *Segment) Fields() []string {
 	return fields
 }
 
+// FieldLength returns the length of a field in a document.
+func (s *Segment) FieldLength(field string, docNum uint64) uint64 {
+	if s.footer.FieldLengths == nil {
+		return 0
+	}
+	if lengths, ok := s.footer.FieldLengths[field]; ok && docNum < uint64(len(lengths)) {
+		return lengths[docNum]
+	}
+	return 0
+}
+
+// AvgFieldLength returns the average length of a field.
+func (s *Segment) AvgFieldLength(field string) float64 {
+	meta, ok := s.fieldMetaByName[field]
+	if !ok || meta.DocCount == 0 {
+		return 0
+	}
+	return float64(meta.TotalTokens) / float64(meta.DocCount)
+}
+
 // LoadDoc loads a document by docNum from stored fields.
 func (s *Segment) LoadDoc(docNum uint64) (map[string]any, error) {
 	if docNum >= s.footer.NumDocs {

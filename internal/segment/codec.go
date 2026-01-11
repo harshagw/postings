@@ -37,12 +37,13 @@ type Posting struct {
 }
 
 type Footer struct {
-	StoredFieldsOffset uint64      `json:"stored_offset"`
-	FieldsIndexOffset  uint64      `json:"fields_offset"`
-	ChunkOffsets       []uint64    `json:"chunks"`
-	FieldsMeta         []FieldMeta `json:"fields"`
-	DocIDs             []string    `json:"doc_ids"`
-	NumDocs            uint64      `json:"num_docs"`
+	StoredFieldsOffset uint64              `json:"stored_offset"`
+	FieldsIndexOffset  uint64              `json:"fields_offset"`
+	ChunkOffsets       []uint64            `json:"chunks"`
+	FieldsMeta         []FieldMeta         `json:"fields"`
+	DocIDs             []string            `json:"doc_ids"`
+	NumDocs            uint64              `json:"num_docs"`
+	FieldLengths       map[string][]uint64 `json:"field_lengths,omitempty"`
 }
 
 type FieldMeta struct {
@@ -51,6 +52,8 @@ type FieldMeta struct {
 	DictSize       uint64 `json:"dict_size"`
 	PostingsOffset uint64 `json:"postings_offset"`
 	PostingsSize   uint64 `json:"postings_size"`
+	TotalTokens    uint64 `json:"total_tokens,omitempty"`
+	DocCount       uint64 `json:"doc_count,omitempty"`
 }
 
 // EncodePostings encodes a posting list with delta encoding.

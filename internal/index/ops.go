@@ -121,10 +121,11 @@ func (idx *Index) Snapshot() (*IndexSnapshot, error) {
 	}
 
 	return &IndexSnapshot{
-		segments: snapshots,
-		builder:  idx.builder,
-		epoch:    idx.epoch,
-		analyzer: idx.analyzer,
+		segments:    snapshots,
+		builder:     idx.builder,
+		epoch:       idx.epoch,
+		analyzer:    idx.analyzer,
+		scoringMode: idx.scoringMode,
 	}, nil
 }
 
