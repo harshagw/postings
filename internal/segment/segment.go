@@ -94,6 +94,18 @@ func (s *Segment) ID() string { return s.id }
 // Path returns the segment file path.
 func (s *Segment) Path() string { return s.path }
 
+// Size returns the segment file size in bytes.
+func (s *Segment) Size() int64 {
+	if s.file == nil {
+		return 0
+	}
+	stat, err := s.file.Stat()
+	if err != nil {
+		return 0
+	}
+	return stat.Size()
+}
+
 // NumDocs returns the total number of documents.
 func (s *Segment) NumDocs() uint64 { return s.footer.NumDocs }
 

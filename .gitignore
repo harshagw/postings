@@ -2,3 +2,5 @@
 testindex/
 .DS_Store
 postings
+cmd/bench/testdata/
+/bench

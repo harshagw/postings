@@ -189,6 +189,7 @@ type SegmentStats struct {
 	NumDocs    uint64
 	NumDeleted uint64
 	Fields     []string
+	SizeBytes  int64
 }
 
 // SegmentStats returns detailed stats for a segment.
@@ -206,6 +207,7 @@ func (idx *Index) SegmentStats(segID string) (*SegmentStats, error) {
 				NumDocs:    seg.NumDocs(),
 				NumDeleted: deleted.GetCardinality(),
 				Fields:     seg.Fields(),
+				SizeBytes:  seg.Size(),
 			}, nil
 		}
 	}

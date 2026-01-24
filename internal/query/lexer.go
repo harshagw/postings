@@ -169,8 +169,7 @@ func (l *Lexer) readWord() (Token, error) {
 		return Token{}, fmt.Errorf("unexpected character at position %d", l.pos)
 	}
 
-	upper := strings.ToUpper(word)
-	switch upper {
+	switch word {
 	case "AND":
 		return Token{Type: TokenAnd, Value: word}, nil
 	case "OR":

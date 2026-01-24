@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"harshagw/postings/internal/index"
 	"harshagw/postings/internal/search"
@@ -47,6 +48,7 @@ func main() {
 func printHelp() {
 	fmt.Println("Commands:")
 	fmt.Println("  index <docID> <json>       - Add document")
+	fmt.Println("  indexfile <path> [count]   - Index documents from JSON file")
 	fmt.Println("  delete <docID>             - Delete document")
 	fmt.Println("  flush                      - Flush to segment")
 	fmt.Println("  merge                      - Merge all segments")
@@ -82,6 +84,8 @@ func (r *REPL) executor(input string) {
 	switch cmd {
 	case "index":
 		r.cmdIndex(input)
+	case "indexfile":
+		r.cmdIndexFile(parts[1:])
 	case "delete":
 		r.cmdDelete(parts[1:])
 	case "flush":
@@ -131,6 +135,84 @@ func (r *REPL) cmdIndex(input string) {
 	}
 
 	fmt.Printf("Indexed '%s' (%d fields)\n", docID, len(doc))
+}
+
+// jsonDoc represents a document in the JSON file format (matches testdata.go)
+type jsonDoc struct {
+	ID     string         `json:"ID"`
+	Fields map[string]any `json:"Fields"`
+}
+
+func (r *REPL) cmdIndexFile(args []string) {
+	if len(args) < 1 {
+		fmt.Println("Usage: indexfile <path> [count]")
+		fmt.Println("  path  - Path to JSON file containing documents")
+		fmt.Println("  count - Optional: number of documents to index (default: all)")
+		fmt.Println()
+		fmt.Println("Expected JSON format: [{\"ID\": \"doc1\", \"Fields\": {...}}, ...]")
+		return
+	}
+
+	filePath := args[0]
+	maxCount := -1 // -1 means all documents
+
+	if len(args) >= 2 {
+		var err error
+		maxCount, err = strconv.Atoi(args[1])
+		if err != nil {
+			fmt.Printf("Invalid count: %v\n", err)
+			return
+		}
+	}
+
+	// Read and parse the JSON file
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		fmt.Printf("Error reading file: %v\n", err)
+		return
+	}
+
+	var docs []jsonDoc
+	if err := json.Unmarshal(data, &docs); err != nil {
+		fmt.Printf("Error parsing JSON: %v\n", err)
+		return
+	}
+
+	// Determine how many to index
+	toIndex := len(docs)
+	if maxCount > 0 && maxCount < toIndex {
+		toIndex = maxCount
+	}
+
+	fmt.Printf("Indexing %d documents from %s...\n", toIndex, filePath)
+	start := time.Now()
+
+	indexed := 0
+	errors := 0
+	for i := 0; i < toIndex; i++ {
+		doc := docs[i]
+		if err := r.idx.Index(doc.ID, doc.Fields); err != nil {
+			errors++
+			if errors <= 5 {
+				fmt.Printf("  Error indexing '%s': %v\n", doc.ID, err)
+			}
+			continue
+		}
+		indexed++
+
+		// Progress update every 1000 docs
+		if indexed%1000 == 0 {
+			fmt.Printf("  Indexed %d/%d documents...\n", indexed, toIndex)
+		}
+	}
+
+	elapsed := time.Since(start)
+	fmt.Printf("Indexed %d documents in %v", indexed, elapsed.Round(time.Millisecond))
+	if errors > 0 {
+		fmt.Printf(" (%d errors)", errors)
+	}
+	fmt.Println()
+	fmt.Printf("Use 'flush' to persist to disk.\n")
 }
 
 func (r *REPL) cmdDelete(args []string) {
