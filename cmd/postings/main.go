@@ -25,7 +25,6 @@ func main() {
 	printHelp()
 	fmt.Println()
 
-	// Open index at fixed location
 	config := index.DefaultConfig(IndexDir)
 	idx, err := index.New(config)
 	if err != nil {
@@ -47,23 +46,28 @@ func main() {
 
 func printHelp() {
 	fmt.Println("Commands:")
-	fmt.Println("  index <docID> <json>         - Add document to batch")
-	fmt.Println("  delete <docID>               - Mark document as deleted")
-	fmt.Println("  flush                        - Write batch to new segment")
-	fmt.Println("  merge                        - Merge segments, remove deleted docs")
-	fmt.Println("  search [--field=F] <query>   - Term/phrase search (optionally in field F)")
-	fmt.Println("  search [--field=F] --and ... - AND search: docs containing ALL terms")
-	fmt.Println("  search [--field=F] --or ...  - OR search: docs containing ANY term")
-	fmt.Println("  search [--field=F] --regex <pattern>  - Regex search: terms matching pattern")
-	fmt.Println("  search [--field=F] --prefix <prefix>  - Prefix search: terms starting with prefix")
-	fmt.Println("  search [--field=F] --fuzzy[=N] <term> - Fuzzy search: terms within N edits (default 1)")
-	fmt.Println("  segments                     - List all segments")
-	fmt.Println("  segment <id> stats           - Show segment details")
-	fmt.Println("  doc <segment> <docNum>       - Load stored document")
-	fmt.Println("  dump postings <field> <term> - Show posting list")
-	fmt.Println("  dump deletions <segment>     - Show deletion bitmap")
-	fmt.Println("  help                         - Show this help")
-	fmt.Println("  quit                         - Exit")
+	fmt.Println("  index <docID> <json>       - Add document")
+	fmt.Println("  delete <docID>             - Delete document")
+	fmt.Println("  flush                      - Flush to segment")
+	fmt.Println("  merge                      - Merge all segments")
+	fmt.Println()
+	fmt.Println("  search <query>             - Search with query syntax:")
+	fmt.Println("    term                     - Single term search")
+	fmt.Println("    field:term               - Field-specific search")
+	fmt.Println("    \"exact phrase\"           - Phrase search")
+	fmt.Println("    term1 AND term2          - Both must match")
+	fmt.Println("    term1 OR term2           - Either matches")
+	fmt.Println("    term1 -term2             - Exclude term2")
+	fmt.Println("    (a OR b) AND c           - Grouping")
+	fmt.Println("    term*                    - Prefix search")
+	fmt.Println()
+	fmt.Println("  segments                   - List segments")
+	fmt.Println("  segment <id> stats         - Segment details")
+	fmt.Println("  doc <segment> <docNum>     - Load document")
+	fmt.Println("  dump postings <field> <term>")
+	fmt.Println("  dump deletions <segment>")
+	fmt.Println("  help                       - Show this help")
+	fmt.Println("  quit                       - Exit")
 }
 
 func (r *REPL) executor(input string) {
@@ -85,7 +89,7 @@ func (r *REPL) executor(input string) {
 	case "merge":
 		r.cmdMerge()
 	case "search":
-		r.cmdSearch(parts[1:])
+		r.cmdSearch(input)
 	case "segments":
 		r.cmdSegments()
 	case "segment":
@@ -159,23 +163,21 @@ func (r *REPL) cmdMerge() {
 	fmt.Printf("Merged. %d segments.\n", r.idx.NumSegments())
 }
 
-func (r *REPL) cmdSearch(args []string) {
-	if len(args) < 1 {
-		fmt.Println("Usage: search [--field=<name>] <query>")
-		fmt.Println("       search [--field=<name>] --and <term1> <term2> ...")
-		fmt.Println("       search [--field=<name>] --or <term1> <term2> ...")
-		return
-	}
+func (r *REPL) cmdSearch(input string) {
+	query := strings.TrimPrefix(input, "search")
+	query = strings.TrimSpace(query)
 
-	// Parse --field flag
-	field := ""
-	if f, ok := strings.CutPrefix(args[0], "--field="); ok {
-		field = f
-		args = args[1:]
-		if len(args) < 1 {
-			fmt.Println("Error: missing query after --field")
-			return
-		}
+	if query == "" {
+		fmt.Println("Usage: search <query>")
+		fmt.Println("Examples:")
+		fmt.Println("  search hello")
+		fmt.Println("  search title:hello")
+		fmt.Println("  search \"hello world\"")
+		fmt.Println("  search hello AND world")
+		fmt.Println("  search hello OR world")
+		fmt.Println("  search hello -spam")
+		fmt.Println("  search hel*")
+		return
 	}
 
 	snap, err := r.idx.Snapshot()
@@ -186,90 +188,19 @@ func (r *REPL) cmdSearch(args []string) {
 	defer snap.Close()
 
 	searcher := search.New(snap)
-
-	var results []search.Result
-	var queryDesc string
-
-	// Check for --and, --or, or --regex flags
-	if args[0] == "--and" {
-		if len(args) < 2 {
-			fmt.Println("Usage: search --and <term1> <term2> ...")
-			return
-		}
-		terms := make([]string, len(args)-1)
-		for i, t := range args[1:] {
-			terms[i] = strings.ToLower(t)
-		}
-		queryDesc = "AND(" + strings.Join(terms, ", ") + ")"
-		results, err = searcher.AndSearch(terms, field)
-	} else if args[0] == "--or" {
-		if len(args) < 2 {
-			fmt.Println("Usage: search --or <term1> <term2> ...")
-			return
-		}
-		terms := make([]string, len(args)-1)
-		for i, t := range args[1:] {
-			terms[i] = strings.ToLower(t)
-		}
-		queryDesc = "OR(" + strings.Join(terms, ", ") + ")"
-		results, err = searcher.OrSearch(terms, field)
-	} else if args[0] == "--regex" {
-		if len(args) < 2 {
-			fmt.Println("Usage: search --regex <pattern>")
-			return
-		}
-		pattern := args[1]
-		queryDesc = "REGEX(" + pattern + ")"
-		results, err = searcher.RegexSearch(pattern, field)
-	} else if args[0] == "--prefix" {
-		if len(args) < 2 {
-			fmt.Println("Usage: search --prefix <prefix>")
-			return
-		}
-		prefix := strings.ToLower(args[1])
-		queryDesc = "PREFIX(" + prefix + ")"
-		results, err = searcher.PrefixSearch(prefix, field)
-	} else if strings.HasPrefix(args[0], "--fuzzy") {
-		fuzziness := uint8(1)
-		if strings.HasPrefix(args[0], "--fuzzy=") {
-			n, _ := strconv.Atoi(strings.TrimPrefix(args[0], "--fuzzy="))
-			if n >= 1 && n <= 2 {
-				fuzziness = uint8(n)
-			}
-		}
-		if len(args) < 2 {
-			fmt.Println("Usage: search --fuzzy[=N] <term>")
-			return
-		}
-		term := strings.ToLower(args[1])
-		queryDesc = fmt.Sprintf("FUZZY(%s, %d)", term, fuzziness)
-		results, err = searcher.FuzzySearch(term, fuzziness, field)
-	} else if len(args) == 1 {
-		query := strings.ToLower(args[0])
-		queryDesc = query
-		results, err = searcher.Search(query, field)
-	} else {
-		query := strings.ToLower(strings.Join(args, " "))
-		queryDesc = "\"" + query + "\""
-		results, err = searcher.PhraseSearch(query, field)
-	}
-
-	if field != "" {
-		queryDesc += " in:" + field
-	}
-
+	results, err := searcher.Query(query)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		return
 	}
 
 	if len(results) == 0 {
-		fmt.Printf("No results for %s\n", queryDesc)
+		fmt.Printf("No results for: %s\n", query)
 	} else {
-		fmt.Printf("Found %d results for %s:\n", len(results), queryDesc)
+		fmt.Printf("Found %d results for: %s\n", len(results), query)
 		for _, res := range results {
 			if len(res.MatchedTerms) > 0 {
-				fmt.Printf("  %s (%.4f) [terms: %s]\n", res.DocID, res.Score, strings.Join(res.MatchedTerms, ", "))
+				fmt.Printf("  %s (%.4f) [%s]\n", res.DocID, res.Score, strings.Join(res.MatchedTerms, ", "))
 			} else {
 				fmt.Printf("  %s (%.4f)\n", res.DocID, res.Score)
 			}

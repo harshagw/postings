@@ -7,7 +7,7 @@ A full-text search engine with LSM-style writes and immutable segments.
 - Inverted index with FST dictionaries
 - Immutable segments with mmap
 - Term / AND / OR / Phrase queries / Regex / Prefix / Fuzzy queries
-- TF-IDF scoring
+- TF-IDF scoring, BM25 scoring
 - Tombstone deletes via roaring bitmaps
 - Interactive REPL (go-prompt)
 
