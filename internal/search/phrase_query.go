@@ -3,12 +3,11 @@ package search
 import (
 	"harshagw/postings/internal/index"
 	"harshagw/postings/internal/segment"
-	"slices"
 )
 
-// PhraseSearch searches for an exact phrase in a field.
+// phraseSearch searches for an exact phrase in a field.
 // If field is empty, searches all fields.
-func (s *Searcher) PhraseSearch(phrase, field string) ([]Result, error) {
+func (s *Searcher) phraseSearch(phrase, field string) ([]Result, error) {
 	tokens := s.snapshot.Analyzer().Analyze(phrase)
 
 	if len(tokens) == 0 {
@@ -21,7 +20,7 @@ func (s *Searcher) PhraseSearch(phrase, field string) ([]Result, error) {
 	}
 
 	if len(terms) == 1 {
-		return s.Search(terms[0], field)
+		return s.termSearch(terms[0], field)
 	}
 
 	var matches []searchMatch
@@ -112,7 +111,7 @@ func phraseMatch(positions [][]uint64) bool {
 		ok := true
 		for i := 1; i < len(positions); i++ {
 			expectedPos := start + uint64(i)
-			if !slices.Contains(positions[i], expectedPos) {
+			if !binarySearchUint64(positions[i], expectedPos) {
 				ok = false
 				break
 			}

@@ -1,6 +1,9 @@
 package search
 
-import "slices"
+import (
+	"slices"
+	"sort"
+)
 
 // sortByScore sorts the results by score in descending order.
 func sortByScore(results []Result) {
@@ -44,4 +47,12 @@ func levenshteinDistance(a, b string) int {
 	}
 
 	return prev[len(b)]
+}
+
+// binarySearchUint64 performs binary search on a sorted slice of uint64
+func binarySearchUint64(sorted []uint64, target uint64) bool {
+	idx := sort.Search(len(sorted), func(i int) bool {
+		return sorted[i] >= target
+	})
+	return idx < len(sorted) && sorted[idx] == target
 }

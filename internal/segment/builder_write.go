@@ -100,15 +100,10 @@ func (b *Builder) writeFieldIndex(file *os.File, fieldName string, terms map[str
 		offset, _ := file.Seek(0, 1)
 		relOffset := uint64(offset) - meta.PostingsOffset
 
-		// Use 1-hit encoding for single-doc terms
-		if len(postings) == 1 {
-			termOffsets[term] = EncodeOneHit(postings[0].DocNum)
-		} else {
-			termOffsets[term] = relOffset
-			encoded := EncodePostings(postings)
-			if _, err := file.Write(encoded); err != nil {
-				return meta, err
-			}
+		termOffsets[term] = relOffset
+		encoded := EncodePostings(postings)
+		if _, err := file.Write(encoded); err != nil {
+			return meta, err
 		}
 	}
 

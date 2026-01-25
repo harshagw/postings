@@ -12,3 +12,6 @@ download:
 build:
 	go build -o postings ./cmd/postings
 	go build -o bench ./cmd/bench
+
+verify:
+	go run ./cmd/verify

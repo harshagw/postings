@@ -117,6 +117,27 @@ func (s *Segment) ExternalID(docNum uint64) (string, bool) {
 	return s.footer.DocIDs[docNum], true
 }
 
+// DocNum returns the docNum for a given external ID.
+func (s *Segment) DocNum(externalID string) (uint64, bool) {
+	fst, err := s.getFST(IDField)
+	if err != nil {
+		return 0, false
+	}
+
+	val, exists, err := fst.Get([]byte(externalID))
+	if err != nil || !exists {
+		return 0, false
+	}
+
+	meta := s.getFieldMeta(IDField)
+	postingsOffset := meta.PostingsOffset + val
+	postings, err := decodePostings(s.data[postingsOffset:])
+	if err != nil || len(postings) == 0 {
+		return 0, false
+	}
+	return postings[0].DocNum, true
+}
+
 // DocNumbers returns a bitmap of docNums for the given external IDs.
 // Uses FST lookup on the _id field for each ID.
 func (s *Segment) DocNumbers(externalIDs []string) *roaring.Bitmap {
@@ -127,15 +148,21 @@ func (s *Segment) DocNumbers(externalIDs []string) *roaring.Bitmap {
 		return bm
 	}
 
+	meta := s.getFieldMeta(IDField)
+	if meta == nil {
+		return bm
+	}
+
 	for _, id := range externalIDs {
 		val, exists, err := fst.Get([]byte(id))
 		if err != nil || !exists {
 			continue
 		}
 
-		// _id terms are always 1-hit encoded
-		if IsOneHit(val) {
-			bm.Add(uint32(DecodeOneHit(val)))
+		postingsOffset := meta.PostingsOffset + val
+		postings, err := decodePostings(s.data[postingsOffset:])
+		if err == nil && len(postings) > 0 {
+			bm.Add(uint32(postings[0].DocNum))
 		}
 	}
 	return bm

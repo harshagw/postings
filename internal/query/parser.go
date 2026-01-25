@@ -2,6 +2,8 @@ package query
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 )
 
 // Parser parses tokens into a Query AST.
@@ -24,7 +26,7 @@ func Parse(tokens []Token) (Query, error) {
 // Parse parses the tokens into a Query AST.
 func (p *Parser) Parse() (Query, error) {
 	if len(p.tokens) == 0 || (len(p.tokens) == 1 && p.tokens[0].Type == TokenEOF) {
-		return &MatchAllQuery{}, nil
+		return nil, nil
 	}
 
 	query, err := p.parseOrExpr()
@@ -103,7 +105,8 @@ func (p *Parser) parseAndExpr() (Query, error) {
 
 		next := p.peek()
 		if next.Type == TokenTerm || next.Type == TokenPhrase || next.Type == TokenField ||
-			next.Type == TokenPrefix || next.Type == TokenLParen || next.Type == TokenNot {
+			next.Type == TokenPrefix || next.Type == TokenRegex || next.Type == TokenFuzzy ||
+			next.Type == TokenLParen || next.Type == TokenNot {
 			right, err := p.parseUnaryExpr()
 			if err != nil {
 				return nil, err
@@ -149,6 +152,12 @@ func (p *Parser) parsePrimary() (Query, error) {
 	case TokenPrefix:
 		p.advance()
 		return &PrefixQuery{Prefix: token.Value}, nil
+	case TokenRegex:
+		p.advance()
+		return &RegexQuery{Pattern: token.Value}, nil
+	case TokenFuzzy:
+		p.advance()
+		return p.parseFuzzy(token.Value, "")
 	case TokenTerm:
 		p.advance()
 		return &TermQuery{Term: token.Value}, nil
@@ -157,6 +166,21 @@ func (p *Parser) parsePrimary() (Query, error) {
 	default:
 		return nil, fmt.Errorf("unexpected token: %s", token)
 	}
+}
+
+func (p *Parser) parseFuzzy(value, field string) (Query, error) {
+	// value is "term~N"
+	parts := strings.Split(value, "~")
+	term := parts[0]
+	fuzziness := uint8(1)
+	if len(parts) > 1 && parts[1] != "" {
+		n, err := strconv.Atoi(parts[1])
+		if err != nil || n < 0 || n > 2 {
+			return nil, fmt.Errorf("invalid fuzziness: %s (must be 0, 1, or 2)", parts[1])
+		}
+		fuzziness = uint8(n)
+	}
+	return &FuzzyQuery{Field: field, Term: term, Fuzziness: fuzziness}, nil
 }
 
 func (p *Parser) parseGrouped() (Query, error) {
@@ -188,6 +212,12 @@ func (p *Parser) parseFieldExpr() (Query, error) {
 	case TokenPrefix:
 		p.advance()
 		return &PrefixQuery{Field: field, Prefix: valueToken.Value}, nil
+	case TokenRegex:
+		p.advance()
+		return &RegexQuery{Field: field, Pattern: valueToken.Value}, nil
+	case TokenFuzzy:
+		p.advance()
+		return p.parseFuzzy(valueToken.Value, field)
 	case TokenTerm:
 		p.advance()
 		return &TermQuery{Field: field, Term: valueToken.Value}, nil

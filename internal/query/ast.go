@@ -56,6 +56,37 @@ func (q *PrefixQuery) String() string {
 	return fmt.Sprintf("prefix(%s*)", q.Prefix)
 }
 
+// RegexQuery searches for terms matching a regex pattern.
+type RegexQuery struct {
+	Field   string
+	Pattern string
+}
+
+func (q *RegexQuery) queryNode() {}
+
+func (q *RegexQuery) String() string {
+	if q.Field != "" {
+		return fmt.Sprintf("regex(%s:/%s/)", q.Field, q.Pattern)
+	}
+	return fmt.Sprintf("regex(/%s/)", q.Pattern)
+}
+
+// FuzzyQuery searches for terms within edit distance.
+type FuzzyQuery struct {
+	Field     string
+	Term      string
+	Fuzziness uint8
+}
+
+func (q *FuzzyQuery) queryNode() {}
+
+func (q *FuzzyQuery) String() string {
+	if q.Field != "" {
+		return fmt.Sprintf("fuzzy(%s:%s~%d)", q.Field, q.Term, q.Fuzziness)
+	}
+	return fmt.Sprintf("fuzzy(%s~%d)", q.Term, q.Fuzziness)
+}
+
 // BoolQuery combines multiple queries with boolean logic.
 type BoolQuery struct {
 	Must    []Query
@@ -99,20 +130,3 @@ func (q *BoolQuery) String() string {
 	return fmt.Sprintf("bool(%s)", strings.Join(parts, " "))
 }
 
-// MatchAllQuery matches all documents.
-type MatchAllQuery struct{}
-
-func (q *MatchAllQuery) queryNode() {}
-
-func (q *MatchAllQuery) String() string {
-	return "match_all"
-}
-
-// MatchNoneQuery matches no documents.
-type MatchNoneQuery struct{}
-
-func (q *MatchNoneQuery) queryNode() {}
-
-func (q *MatchNoneQuery) String() string {
-	return "match_none"
-}

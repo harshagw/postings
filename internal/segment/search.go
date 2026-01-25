@@ -67,17 +67,6 @@ func (s *Segment) Search(term, fieldName string, deleted *roaring.Bitmap) ([]Pos
 	}
 
 	meta := s.getFieldMeta(fieldName)
-
-	// Check for 1-hit encoding
-	if IsOneHit(val) {
-		docNum := DecodeOneHit(val)
-		if deleted != nil && deleted.Contains(uint32(docNum)) {
-			return nil, nil
-		}
-		return []Posting{{DocNum: docNum, Frequency: 1, Positions: []uint64{1}}}, nil
-	}
-
-	// Regular posting list
 	postingsOffset := meta.PostingsOffset + val
 	postings, err := decodePostings(s.data[postingsOffset:])
 	if err != nil {
@@ -96,6 +85,26 @@ func (s *Segment) Search(term, fieldName string, deleted *roaring.Bitmap) ([]Pos
 	}
 
 	return postings, nil
+}
+
+// SearchBitmap returns just the docNum bitmap for a term (no freq/positions).
+func (s *Segment) SearchBitmap(term, fieldName string, deleted *roaring.Bitmap) (*roaring.Bitmap, error) {
+	fst, err := s.getFST(fieldName)
+	if err != nil {
+		return nil, err
+	}
+
+	val, exists, err := fst.Get([]byte(term))
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return roaring.New(), nil
+	}
+
+	meta := s.getFieldMeta(fieldName)
+	postingsOffset := meta.PostingsOffset + val
+	return DecodePostingsBitmap(s.data[postingsOffset:], deleted)
 }
 
 // decodePostings decodes a posting list from segment data.
@@ -153,12 +162,17 @@ func (s *Segment) FuzzyTerms(term string, fuzziness uint8, fieldName string) ([]
 	return s.searchWithAutomaton(fieldName, aut)
 }
 
-// PrefixTerms returns all terms in a field that start with the given prefix.
-// Uses efficient FST range scan instead of automaton.
-func (s *Segment) PrefixTerms(prefix, fieldName string) ([]string, error) {
+// PrefixPostings returns all postings for terms matching the prefix.
+// More efficient than PrefixTerms + multiple Search calls.
+func (s *Segment) PrefixPostings(prefix, fieldName string, deleted *roaring.Bitmap) ([]Posting, error) {
 	fst, err := s.getFST(fieldName)
 	if err != nil {
 		return nil, err
+	}
+
+	meta := s.getFieldMeta(fieldName)
+	if meta == nil {
+		return nil, fmt.Errorf("field not found: %s", fieldName)
 	}
 
 	start := []byte(prefix)
@@ -169,10 +183,27 @@ func (s *Segment) PrefixTerms(prefix, fieldName string) ([]string, error) {
 		return nil, fmt.Errorf("failed to create iterator: %w", err)
 	}
 
-	var terms []string
+	docPostings := make(map[uint64]Posting)
+
 	for err == nil {
-		key, _ := iter.Current()
-		terms = append(terms, string(key))
+		_, val := iter.Current()
+
+		postingsOffset := meta.PostingsOffset + val
+		postings, decodeErr := decodePostings(s.data[postingsOffset:])
+		if decodeErr == nil {
+			for _, p := range postings {
+				if deleted != nil && deleted.Contains(uint32(p.DocNum)) {
+					continue
+				}
+				if existing, ok := docPostings[p.DocNum]; ok {
+					existing.Frequency += p.Frequency
+					docPostings[p.DocNum] = existing
+				} else {
+					docPostings[p.DocNum] = p
+				}
+			}
+		}
+
 		err = iter.Next()
 	}
 
@@ -180,5 +211,11 @@ func (s *Segment) PrefixTerms(prefix, fieldName string) ([]string, error) {
 		return nil, err
 	}
 
-	return terms, nil
+	// Convert map to slice
+	result := make([]Posting, 0, len(docPostings))
+	for _, p := range docPostings {
+		result = append(result, p)
+	}
+
+	return result, nil
 }

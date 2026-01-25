@@ -463,7 +463,7 @@ func benchmarkQuery(s *search.Searcher, query string) (time.Duration, int) {
 
 	// Warm up
 	for i := 0; i < 10; i++ {
-		results, _ := s.Query(query)
+		results, _ := s.RunQueryString(query)
 		hits = len(results)
 	}
 
@@ -471,7 +471,7 @@ func benchmarkQuery(s *search.Searcher, query string) (time.Duration, int) {
 	iterations := 500
 	start := time.Now()
 	for i := 0; i < iterations; i++ {
-		s.Query(query)
+		s.RunQueryString(query)
 	}
 	return time.Since(start) / time.Duration(iterations), hits
 }

@@ -270,7 +270,7 @@ func (r *REPL) cmdSearch(input string) {
 	defer snap.Close()
 
 	searcher := search.New(snap)
-	results, err := searcher.Query(query)
+	results, err := searcher.RunQueryString(query)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		return

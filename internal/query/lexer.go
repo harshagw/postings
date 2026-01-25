@@ -18,6 +18,8 @@ const (
 	TokenLParen
 	TokenRParen
 	TokenPrefix
+	TokenRegex
+	TokenFuzzy
 	TokenEOF
 )
 
@@ -41,6 +43,10 @@ func (t TokenType) String() string {
 		return "RPAREN"
 	case TokenPrefix:
 		return "PREFIX"
+	case TokenRegex:
+		return "REGEX"
+	case TokenFuzzy:
+		return "FUZZY"
 	case TokenEOF:
 		return "EOF"
 	default:
@@ -119,6 +125,8 @@ func (l *Lexer) NextToken() (Token, error) {
 		return l.readTerm()
 	case '"':
 		return l.readPhrase()
+	case '/':
+		return l.readRegex()
 	}
 
 	return l.readWord()
@@ -192,7 +200,39 @@ func (l *Lexer) readWord() (Token, error) {
 		return Token{Type: TokenPrefix, Value: prefix}, nil
 	}
 
+	// Check for fuzzy: word~ or word~N
+	if tildeIdx := strings.Index(word, "~"); tildeIdx > 0 {
+		term := word[:tildeIdx]
+		fuzziness := word[tildeIdx+1:] // "" or "1" or "2"
+		if fuzziness == "" {
+			fuzziness = "1" // default fuzziness
+		}
+		return Token{Type: TokenFuzzy, Value: term + "~" + fuzziness}, nil
+	}
+
 	return Token{Type: TokenTerm, Value: word}, nil
+}
+
+func (l *Lexer) readRegex() (Token, error) {
+	l.pos++ // skip opening /
+	start := l.pos
+
+	for l.pos < len(l.input) && l.input[l.pos] != '/' {
+		if l.input[l.pos] == '\\' && l.pos+1 < len(l.input) {
+			l.pos += 2 // skip escaped char
+			continue
+		}
+		l.pos++
+	}
+
+	if l.pos >= len(l.input) {
+		return Token{}, fmt.Errorf("unterminated regex at position %d", start-1)
+	}
+
+	value := l.input[start:l.pos]
+	l.pos++ // skip closing /
+
+	return Token{Type: TokenRegex, Value: value}, nil
 }
 
 func (l *Lexer) readTerm() (Token, error) {

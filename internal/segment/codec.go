@@ -3,6 +3,8 @@ package segment
 import (
 	"bytes"
 	"encoding/binary"
+
+	"github.com/RoaringBitmap/roaring"
 )
 
 // Segment file format constants
@@ -11,24 +13,6 @@ const (
 	SegmentVersion = uint32(1)
 	ChunkSize      = 1024 // Documents per chunk for stored fields
 )
-
-// OneHitFlag - high bit set means value encodes a single docNum inline.
-const OneHitFlag = uint64(1 << 63)
-
-// IsOneHit checks if a value uses 1-hit encoding.
-func IsOneHit(val uint64) bool {
-	return (val & OneHitFlag) != 0
-}
-
-// EncodeOneHit encodes a single docNum inline.
-func EncodeOneHit(docNum uint64) uint64 {
-	return OneHitFlag | docNum
-}
-
-// DecodeOneHit extracts the docNum from a 1-hit encoded value.
-func DecodeOneHit(val uint64) uint64 {
-	return val &^ OneHitFlag
-}
 
 type Posting struct {
 	DocNum    uint64
@@ -141,4 +125,32 @@ func DecodePostings(data []byte) ([]Posting, error) {
 	}
 
 	return postings, nil
+}
+
+// DecodePostingsBitmap decodes only the docNums from a posting list into a bitmap.
+// This is faster than full decoding when freq/positions aren't needed.
+func DecodePostingsBitmap(data []byte, deleted *roaring.Bitmap) (*roaring.Bitmap, error) {
+	r := newByteReader(data)
+
+	count, err := r.ReadUvarint()
+	if err != nil {
+		return nil, err
+	}
+
+	bm := roaring.New()
+	var prevDocNum uint64
+	for i := uint64(0); i < count; i++ {
+		delta, err := r.ReadUvarint()
+		if err != nil {
+			return nil, err
+		}
+		docNum := prevDocNum + delta
+		prevDocNum = docNum
+
+		if deleted == nil || !deleted.Contains(uint32(docNum)) {
+			bm.Add(uint32(docNum))
+		}
+	}
+
+	return bm, nil
 }
