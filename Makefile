@@ -15,3 +15,6 @@ build:
 
 verify:
 	go run ./cmd/verify
+
+test:
+	go test ./...

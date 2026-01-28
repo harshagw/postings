@@ -1,0 +1,24 @@
+{
+  "name": "postings",
+  "version": "1.0.0",
+  "description": "A full-text search engine with LSM-style writes and immutable segments.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "prepare": "husky"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/harshagw/postings.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/harshagw/postings/issues"
+  },
+  "homepage": "https://github.com/harshagw/postings#readme",
+  "devDependencies": {
+    "husky": "^9.1.7"
+  }
+}

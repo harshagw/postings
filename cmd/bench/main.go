@@ -13,14 +13,14 @@ import (
 	"harshagw/postings/internal/search"
 )
 
-const numDocs = 10000
+const numDocs = 20000
 
 func main() {
 	benchDir := getBenchDir()
 
 	// Handle download command
 	if len(os.Args) >= 2 && os.Args[1] == "download" {
-		target := 10000 // default target
+		target := 20000 // default target
 		if len(os.Args) >= 3 {
 			if t, err := strconv.Atoi(os.Args[2]); err == nil {
 				target = t

@@ -4,3 +4,4 @@ testindex/
 postings
 cmd/bench/testdata/
 /bench
+node_modules/
